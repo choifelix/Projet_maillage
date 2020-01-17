@@ -3,43 +3,13 @@
 import numpy as np
 from math import *
 import gmsh
+import scipy as sp
+from test import *
 
 
-
+###MASSE DE REF###
 masse_ref = 1/24 * (np.ones((3,3)) + np.eye(3))
-#print(masse_ref)
 
-
-
-################GMSH -> RECUPERATION DES DONNEES #############
-
-def gmshToMesh(filename) :
-
-	points_list = []
-	seg_list = []
-	triangle_list = []
-
-	#ouverture fichier gmsh
-	#https://gitlab.onelab.info/gmsh/gmsh/blob/master/api/gmsh.py?fbclid=IwAR2os2AtzsAZa2Y-lOZSi0Jv2EXRSu4meq5OEAz4aBiYyv15iJ0S_YUVFHo
-	ierr = c_int()
-	lib.gmshOpen(
-        	c_char_p(fileName.encode()),
-        	byref(ierr))
-	print("cool")
-	print(ierr.value)
-	if ierr.value != 0:
-		raise ValueError(
-            	"gmshOpen returned non-zero error code: ",
-            	ierr.value)
-	
-
-
-	return points_list, seg_list, triangle_list
-
-filename = "square.msh"
-mesh = gmsh.merge(filename)
-print("tkt\n")
-gmshToMesh(filename)
 
 
 #####################FONCTION DE FORMES TRIANGLE DE REF##################
@@ -106,9 +76,46 @@ def matrice_masse_elem(x1, y1, x2, y2, x3, y3) :
 	return M
 
 
-#def matrice_masse_globale() : 
+def matrice_masse_globale(mesh) : 
+	row = []
+	col = []
+	val = []
+
+	for triangle in mesh.triangles :
+
+		x1 = triangle.Point[0].x
+		y1 = triangle.Point[0].y
+		x2 = triangle.Point[1].x
+		y2 = triangle.Point[1].y
+		x3 = triangle.Point[2].x
+		y3 = triangle.Point[2].y
+		M_e = matrice_masse_elem(x1, y1, x2, y2, x3, y3)
+
+		for i in range(3):
+			I = triangle.Point[i]
+			for j in range(3):
+				J = triangle.Point[i]
+				row.append(I)
+				col.append(J)
+				val.append(M_e[i][j])
+
+	data = (val,(row,col))
+
+	M = sp.coo_matrix(data)
+
+	return M
 
 
+#######SCRIPT######
+
+
+gmsh.initialize(sys.argv)
+filename = "square.msh"
+mesh = Mesh()
+mesh.gmshToMesh(filename)
+res = matrice_masse_globale(mesh)
+
+print(res.toarray())
 
 
 #triangle p, 
