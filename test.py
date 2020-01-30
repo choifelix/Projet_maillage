@@ -11,7 +11,8 @@ class Point :
 
 
 	def __str__(self):
-		return "Point " + str(self.id) + " : (" + str(self.x) + " , " + str(self.y)+")"
+		#return "Point " + str(self.id) + " : (" + str(self.x) + " , " + str(self.y)+")"
+		return ""
 
 class Segment :
 	def __init__(self, index, tag, Point) :
@@ -30,20 +31,37 @@ class Segment :
 
 
 class Triangle :
-	def __init__(self, index, tag, Point) :
+	def __init__(self, index, tag, Point_list) :
 		self.id = index
 		self.tag = tag
-		self.Point = Point
+		self.Point = Point_list
 
 	def __str__(self):
 		return "Triangle : " + str(self.id) + " : " + str(self.Point[0]) + " , " + str(self.Point[1])
 
 
-	def area(self) :
-		return 0.5 * abs((x2-x1)*(y3-y1) - (x3-x1)*(y2-y1))
+	# def area(self) :
+	# 	return 0.5 * abs((x2-x1)*(y3-y1) - (x3-x1)*(y2-y1))
 
-	def jac(self) :
-		return 2 * area(self)
+	def gaussPoint(self,order=2):
+		res = []
+		if order == 1 : 
+			#xi, eta, poids(omega)
+			res.append([1./3., 1./3., 1./6.])
+		if order == 2 :
+			res.append([1./6., 1./6., 1./6.])
+			res.append([4./6., 1./6., 1./6.])
+			res.append([1./6., 4./6., 1./6.])
+
+		if (order!=1 and order!=2 ) : 
+			print("l ordre doit etre compris entre 1 et 2 -> ordre au dela non implementé!")
+			return
+
+
+		return res
+
+	# def jac(self) :
+	# 	return 2 * area(self)
 
 
 class Mesh :
@@ -105,7 +123,6 @@ class Mesh :
 
 				# print(list_elements)
 
-mesh = Mesh()
-mesh.gmshToMesh(filename)
+
 
 
