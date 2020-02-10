@@ -5,6 +5,7 @@ from math import *
 import gmsh
 import scipy.sparse as sp
 from test import *
+import matplotlib.pyplot as plt
 
 
 ###MASSE DE REF###
@@ -92,35 +93,35 @@ def matrice_masse_elem(x1, y1, x2, y2, x3, y3) :
 	M =  det * masse_ref
 	return M
 
-
-def matrice_masse_globale(mesh) : 
+ 
+def matrice_masse_globale(mesh, physical_tag) : 
 	row = []
 	col = []
 	val = []
 
 	for triangle in mesh.triangles :
-
-		x1 = triangle.Point[0].x
-		y1 = triangle.Point[0].y
-		x2 = triangle.Point[1].x
-		y2 = triangle.Point[1].y
-		x3 = triangle.Point[2].x
-		y3 = triangle.Point[2].y
-		M_e = matrice_masse_elem(x1, y1, x2, y2, x3, y3)
-		for i in range(3):
-			I = triangle.Point[i].id
-			for j in range(3):
-				J = triangle.Point[j].id
-				row.append(I)
-				col.append(J)
-				val.append(M_e[i][j])
+		if(triangle.tag == physical_tag):
+			x1 = triangle.Point[0].x
+			y1 = triangle.Point[0].y
+			x2 = triangle.Point[1].x
+			y2 = triangle.Point[1].y
+			x3 = triangle.Point[2].x
+			y3 = triangle.Point[2].y
+			M_e = matrice_masse_elem(x1, y1, x2, y2, x3, y3)
+			for i in range(3):
+				I = triangle.Point[i].id
+				for j in range(3):
+					J = triangle.Point[j].id
+					row.append(I)
+					col.append(J)
+					val.append(M_e[i][j])
 
 	row = np.array(row)
 	col = np.array(col)
 	val = np.array(val)
 
 	data = (val,(row,col))
-	M = sp.coo_matrix(data, shape=(len(mesh.triangles),len(mesh.triangles)), dtype=np.float64 )
+	M = sp.coo_matrix(data, shape=(int(max(row)+1),int(max(row)+1)), dtype=np.float64 )
 
 	return M
 
@@ -140,36 +141,56 @@ def matrice_rigidite_elem(x1, y1, x2, y2, x3, y3):
 
 	return K
 
-def matrice_rigidite_globale(mesh) : 
+def matrice_rigidite_globale(mesh, physical_tag) : 
 	row = []
 	col = []
 	val = []
 
+
 	for triangle in mesh.triangles :
-		x1 = triangle.Point[0].x
-		y1 = triangle.Point[0].y
-		x2 = triangle.Point[1].x
-		y2 = triangle.Point[1].y
-		x3 = triangle.Point[2].x
-		y3 = triangle.Point[2].y
-		K_e = matrice_rigidite_elem(x1, y1, x2, y2, x3, y3)
-		for i in range(3):
-			I = triangle.Point[i].id
-			for j in range(3):
-				J = triangle.Point[j].id
-				row.append(I)
-				col.append(J)
-				val.append(K_e[i][j])
+		if(triangle.tag == physical_tag):
+			x1 = triangle.Point[0].x
+			y1 = triangle.Point[0].y
+			x2 = triangle.Point[1].x
+			y2 = triangle.Point[1].y
+			x3 = triangle.Point[2].x
+			y3 = triangle.Point[2].y
+			K_e = matrice_rigidite_elem(x1, y1, x2, y2, x3, y3)
+			for i in range(3):
+				I = triangle.Point[i].id
+				#recup max id pour la taille de matrice
+				for j in range(3):
+					J = triangle.Point[j].id
+					row.append(I)
+					col.append(J)
+					val.append(K_e[i][j])
 
 	row = np.array(row)
 	col = np.array(col)
-	val = np.array(val)
+	data = np.array(val)
+	#data = (val,(row,col))
 
-	data = (val,(row,col))
+	K = sp.coo_matrix((data, (row,col)), shape=(int(max(row)+1),int(max(row)+1)), dtype=np.float64 )
+	#K = sp.csr_matrix((data, (row,col)), shape=(int(max(row))+1,int(max(row))+1), dtype=np.float64 )
 
-	K = sp.coo_matrix(data, shape=(len(mesh.triangles),len(mesh.triangles)), dtype=np.float64 )
 
 	return K
+
+
+
+# def Sum(K,M):
+# 	A = M
+	
+
+# 	for i_k in range(len(K[0])):
+# 		for i in range(len(A[0])):
+# 			if( K[1][0][i_k] == A[1][0][i] and K[1][1][i_k] == A[1][1][i]):
+# 				A[0][i] += K[0][i_k]
+# 			else:
+# 				A[0].append(k[0][i_k])
+# 				A[1][0].append(k[1][0][i_k])
+# 				A[1][1].append(k[1][1][i_k])
+# 	return A
 
 
 
@@ -181,12 +202,12 @@ def calcul_X(m, triangle, xi, eta):
 	y = 0
 	for i in range(3):
 		phi_ = phi(xi, eta, i+1)
-		x += triangle.Point[i].x * phi_
-		y += triangle.Point[i].y * phi_
+		x += triangle.Point[i].x * phi_  #triangle.Point[i].x = S(i) en x
+		y += triangle.Point[i].y * phi_  #triangle.Point[i].y = S(i) en y
 
 	return x,y
 
-def calcul_B(mesh, order):
+def calcul_B(mesh, order, physical_tag, size):
 
 	#nombre de point de gauss en fonctionde la precision
 	if(order ==1 ):
@@ -194,24 +215,25 @@ def calcul_B(mesh, order):
 	if(order == 2):
 		size_m = 3
 
-	B = np.zeros((len(mesh.points)))
-	print(len(mesh.points))
-	print(B)
+	B = np.zeros((size,1))
+
 
 	for triangle in mesh.triangles :
-		gauss = triangle.gaussPoint(order)
-		for i in range(3):
-			I = triangle.Point[i].id
-			I = int(I) - 1
-			for m in range(size_m):
-				xi    = gauss[m][0]
-				eta   = gauss[m][1]
-				poids = gauss[m][2]
-				#print(poids)
-				(x,y) = calcul_X(m, triangle, xi, eta)
-				#print(f(x,y))
-				B[I] += poids * f(x,y) * phi(xi,eta,i+1)
-				#print(B[I])
+		if(triangle.tag == physical_tag):
+
+			gauss = triangle.gaussPoint(order)
+			for i in range(3):
+				I = triangle.Point[i].id
+				I = int(I) - 1
+				for m in range(size_m):
+					xi    = gauss[m][0]
+					eta   = gauss[m][1]
+					poids = gauss[m][2]
+					#print(poids)
+					(x,y) = calcul_X(m, triangle, xi, eta)
+					#print(f(x,y))
+					B[I] += poids * f(x,y) * phi(xi,eta,i+1)
+					#print(B[I])
 
 	return B
 
@@ -224,8 +246,65 @@ def calcul_B(mesh, order):
 
 
 
+#dim = 1 : segments bords
+def Dirichlet(mesh, dim, physical_tag, g, triplets, B) :
 
-# def quadrature(mesh) :
+	row,col,val = sp.find(triplets)
+	row=row.tolist()
+	col=col.tolist()
+	val=val.tolist()
+	# size = len(row) # matrice carre
+	if(dim == 1) :	
+		for segment in mesh.segments: #chaque segment
+			if(segment.tag == physical_tag):
+				for point in segment.Point: #chaque points du segment
+					I = point.id
+
+					#------ chercher les lignes d'indices I et les mettre a 0 -----
+					for i in range(len(row)):
+						if (row[i] == I):
+							val[i] = 0.
+
+					#------ ajout de 1 sur l'elem de diago I,I -> (I,I,1) -----
+					# val.append(1)
+					# row.append(I)
+					# col.append(I)
+
+					val.append(1.)
+					row.append(I)
+					col.append(I)
+
+
+
+					#------ modif de B pour retouver u = B = g sur les noeuds du bords -----
+					B[I] = g
+
+	
+
+	row = np.array(row)
+	col = np.array(col)
+	val = np.array(val)
+
+
+	data = (val,(row,col))
+
+	A = sp.coo_matrix(data, shape=(int(max(row)+1),int(max(row)+1)), dtype=np.float64 )
+
+	return (A, B)
+
+
+
+
+def solve(A,B):
+	
+
+	u = np.linalg.solve(A,B)
+	return u
+
+
+
+
+
 
 
 
@@ -234,15 +313,91 @@ def calcul_B(mesh, order):
 
 #######SCRIPT######
 
-
+# ------ initialisation du maillage -----
 gmsh.initialize(sys.argv)
 filename = "square.msh"
 mesh = Mesh()
 mesh.gmshToMesh(filename)
-#res = matrice_rigidite_globale(mesh)
-#print(res.toarray())
 
-res = calcul_B(mesh,1)
-print(res)
 
+order      = 2
+dim_dirich = 1
+g          = 0
+
+# ------ construction du probleme  ------
+
+
+# le choix du physical tag depend du .msh -> ici square.msh
+for (dim, physical_tag) in mesh.physical_tag:
+	if(dim == 2):
+		physical_tag_Triangle = physical_tag
+	if(dim == 1):
+		physical_tag_segment = physical_tag
+
+#print(physical_tag_Triangle)
+#print(physical_tag_segment)
+
+# -- calcul de A --
+K = matrice_rigidite_globale(mesh, physical_tag_Triangle)
+M = matrice_masse_globale(mesh, physical_tag_Triangle)
+
+A = K+M
+A_tmp = A.toarray()
+#print(np.linalg.det(A_tmp))
+
+size, sizecol = np.shape(A_tmp)
+
+# print(np.linalg.det(A))
+
+
+# -- calcul de B --
+B = calcul_B(mesh, order, physical_tag_Triangle, size)
+
+
+# -- Pose les conditions aux bords --
+(A, B) =Dirichlet(mesh, dim_dirich, physical_tag_segment, g, A, B)
+print(A)
+
+# -- reshape A et B --
+A = A.toarray()
+print(A)
+A = np.delete(A,0,0)
+A = np.delete(A,0,1)
+
+print(A)
+
+B = np.array(B)
+B = np.delete(B,0,0)
+print(B)
+
+# A_inv = np.linalg.det(A)
+# print("inverse de A:")
+# print(A_inv)
+
+# -- resolution --
+U = solve(A,B)
+print("solution U :")
+print(U)
+
+
+
+# Visualisation
+x= [pt.x for pt in mesh.points]
+y= [pt.y for pt in mesh.points]
+connectivity=[]
+for tri in mesh.triangles:
+  connectivity.append([ p.id for p in tri.Point]) 
+
+plt.tricontourf(x, y, connectivity, U)
+plt.colorbar()
+plt.show()
+
+### U de référence
+# Uref = np.zeros((msh.Npts,))
+# for pt in msh.points:
+#   I = int(pt.id)
+#   Uref[I] = g(pt.x, pt.y)
+# plt.tricontourf(x, y, connectivity, Uref, 12)
+# plt.colorbar()
+# plt.show()
 
