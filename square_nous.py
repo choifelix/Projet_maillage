@@ -1,6 +1,11 @@
 # File square.py
 import gmsh
 import sys
+
+
+#print('vous avez choisi un pas de maillage egal a ', str(sys.argv[1]))
+
+
 gmsh.initialize(sys.argv)
 gmsh.option.setNumber("General.Terminal", 1)
 gmsh.option.setNumber("Mesh.CharacteristicLengthMin", 0.1);

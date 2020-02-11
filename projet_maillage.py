@@ -6,6 +6,7 @@ import gmsh
 import scipy.sparse as sp
 from test import *
 import matplotlib.pyplot as plt
+import matplotlib.tri as mtri
 
 
 ###MASSE DE REF###
@@ -302,12 +303,9 @@ def solve(A,B):
 	return u
 
 
-
-
-
-
-
-
+###g resolution U ref
+def g_sol(x,y) :
+	return np.sin(np.pi*x)*np.sin(np.pi*y)
 
 
 
@@ -342,6 +340,8 @@ K = matrice_rigidite_globale(mesh, physical_tag_Triangle)
 M = matrice_masse_globale(mesh, physical_tag_Triangle)
 
 A = K+M
+
+
 A_tmp = A.toarray()
 #print(np.linalg.det(A_tmp))
 
@@ -356,19 +356,18 @@ B = calcul_B(mesh, order, physical_tag_Triangle, size)
 
 # -- Pose les conditions aux bords --
 (A, B) =Dirichlet(mesh, dim_dirich, physical_tag_segment, g, A, B)
-print(A)
 
 # -- reshape A et B --
 A = A.toarray()
-print(A)
-A = np.delete(A,0,0)
-A = np.delete(A,0,1)
-
-print(A)
+# A = np.delete(A,0,0)
+# A = np.delete(A,0,1)
 
 B = np.array(B)
-B = np.delete(B,0,0)
-print(B)
+# B = np.delete(B,0,0)
+
+#print( " A et B ")
+# print(A)
+# print(B)
 
 # A_inv = np.linalg.det(A)
 # print("inverse de A:")
@@ -376,28 +375,45 @@ print(B)
 
 # -- resolution --
 U = solve(A,B)
-print("solution U :")
-print(U)
-
-
+#print("solution U :")
+#print(U)
 
 # Visualisation
 x= [pt.x for pt in mesh.points]
+
 y= [pt.y for pt in mesh.points]
+
+#triangulation avec les coo des points
+triang = mtri.Triangulation(x, y)
+
+#id des triangles
 connectivity=[]
 for tri in mesh.triangles:
   connectivity.append([ p.id for p in tri.Point]) 
 
-plt.tricontourf(x, y, connectivity, U)
+
+U = U.flatten()
+
+# print(U)
+####U APPROX NOTRE SOLUTION
+plt.tricontourf(triang, U, 12)
 plt.colorbar()
 plt.show()
 
-### U de référence
-# Uref = np.zeros((msh.Npts,))
-# for pt in msh.points:
-#   I = int(pt.id)
-#   Uref[I] = g(pt.x, pt.y)
-# plt.tricontourf(x, y, connectivity, Uref, 12)
-# plt.colorbar()
+
+############
+
+### U de REFERENCE
+Uref = np.zeros((len(mesh.points),))
+
+for pt in mesh.points:
+  I = int(pt.id) - 1
+  Uref[I] = g_sol(pt.x, pt.y)
+
+
+# print(Uref)
+
+plt.tricontourf(triang, Uref, 12)
+plt.colorbar()
 # plt.show()
 
