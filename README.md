@@ -26,7 +26,7 @@ erreur.py : fait une boucle sur les differents pas (h), construit les maillages 
 4. Résultats
 
 Le résultat que nous obtenons ne semble etre satisfaisant (reste nulle sur les bords - les conditions de Dirichlets sont satisfaites cependant). L'écart entre les valeur de U que nous calculons et les valeurs de référence est élevé. Néanmoins, l'erreur augmente de facon linéaire lorsque le pas augmente, résultat qui semble correct. 
-Le calcul de A semble etre la cause de nos erreurs de calculs. En effet, les valeurs sont 
+Le calcul de A semble etre la cause de nos erreurs de calculs. En effet, les valeurs sont tres petites ( de l'ordre de e-6 pour K et e-3 pour M) alors que B est de l'ordre de e-1.
 
 
 

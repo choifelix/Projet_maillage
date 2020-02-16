@@ -4,6 +4,7 @@ import numpy as np
 from math import *
 import gmsh
 import scipy.sparse as sp
+import scipy.sparse.linalg as linalg
 from test import *
 import matplotlib.pyplot as plt
 import matplotlib.tri as mtri
@@ -20,13 +21,13 @@ masse_ref = 1/24 * (np.ones((3,3)) + np.eye(3))
 
 def phi(x,y,i) :
 	#si on se situe au sommet 1
-	if i == 1 :
+	if i == 0 :
 		phi = 1-x-y 
-	if i == 2 : 
+	if i == 1 : 
 		phi = x	
-	if i == 3 : 
+	if i == 2 : 
 		phi = y
-	if (i!=1 and i!=2 and i!=3) : 
+	if (i!=0 and i!=1 and i!=2) : 
 		print("le dernier argument doit etre compris entre 1 et 3 -> numero du sommet!")
 		return 
 
@@ -47,16 +48,16 @@ def gradient_phi(i) :
  
 	#sommet 1
 	#grad = (-1, -1)
-	if i == 1 : 
+	if i == 0 : 
 		grad_phi.append(-1)
 		grad_phi.append(-1)  	
+	if i == 1 : 
+		grad_phi.append(1)
+		grad_phi.append(0)
 	if i == 2 : 
-		grad_phi.append(1)
-		grad_phi.append(0)
-	if i == 3 : 
 		grad_phi.append(0)
 		grad_phi.append(1)
-	if (i!=1 and i!=2 and i!=3) : 
+	if (i!=0 and i!=1 and i!=2) : 
 		print("l argument doit etre compris entre 1 et 3 -> numero du sommet!")
 		return
 	grad_phi = np.array([grad_phi], dtype=np.float64)
@@ -95,10 +96,7 @@ def matrice_masse_elem(x1, y1, x2, y2, x3, y3) :
 	return M
 
  
-def matrice_masse_globale(mesh, physical_tag) : 
-	row = []
-	col = []
-	val = []
+def matrice_masse_globale(mesh, physical_tag, triplets) : 
 
 	for triangle in mesh.triangles :
 		if(triangle.tag == physical_tag):
@@ -108,23 +106,18 @@ def matrice_masse_globale(mesh, physical_tag) :
 			y2 = triangle.Point[1].y
 			x3 = triangle.Point[2].x
 			y3 = triangle.Point[2].y
+
 			M_e = matrice_masse_elem(x1, y1, x2, y2, x3, y3)
+
 			for i in range(3):
 				I = triangle.Point[i].id
+
 				for j in range(3):
 					J = triangle.Point[j].id
-					row.append(I)
-					col.append(J)
-					val.append(M_e[i][j])
+					triplets.append( I,J,M_e[i][j] ) 
 
-	row = np.array(row)
-	col = np.array(col)
-	val = np.array(val)
 
-	data = (val,(row,col))
-	M = sp.coo_matrix(data, shape=(int(max(row)+1),int(max(row)+1)), dtype=np.float64 )
-
-	return M
+	return triplets
 
 
 
@@ -133,65 +126,46 @@ def matrice_rigidite_elem(x1, y1, x2, y2, x3, y3):
 	K = np.zeros((3,3), dtype=np.float64)
 	Tp = area(x1, y1, x2, y2, x3, y3)
 	B_p = Bp(x1, y1, x2, y2, x3, y3)
-	produit_B = B_p.transpose()*B_p
+	produit_B = np.dot(B_p.transpose(),B_p)
+	print(produit_B)
 
 	for i in range(3):
 		for j in range(3):
-			temp = np.dot(gradient_phi(j+1), produit_B )
-			K[i][j] = Tp * np.dot(temp, gradient_phi(i+1).T).item()
+			# temp = np.dot(gradient_phi(j).transpose(), produit_B )
+			# K[i][j] = Tp * np.dot(temp, gradient_phi(i))
+			# print(np.dot( np.dot(gradient_phi(j),produit_B),gradient_phi(i).transpose() ))
+
+			K[i][j] = Tp * np.dot( np.dot(gradient_phi(j),produit_B),gradient_phi(i).transpose() )
 
 	return K
 
-def matrice_rigidite_globale(mesh, physical_tag) : 
-	row = []
-	col = []
-	val = []
-
+def matrice_rigidite_globale(mesh, physical_tag, triplets) : 
 
 	for triangle in mesh.triangles :
 		if(triangle.tag == physical_tag):
+
+			# -- coordonnées des points du triangle --
 			x1 = triangle.Point[0].x
 			y1 = triangle.Point[0].y
 			x2 = triangle.Point[1].x
 			y2 = triangle.Point[1].y
 			x3 = triangle.Point[2].x
 			y3 = triangle.Point[2].y
+
+			# -- matrice elementaire --
 			K_e = matrice_rigidite_elem(x1, y1, x2, y2, x3, y3)
+
+			# -- remplissage matrice globale --
 			for i in range(3):
 				I = triangle.Point[i].id
-				#recup max id pour la taille de matrice
+
 				for j in range(3):
 					J = triangle.Point[j].id
-					row.append(I)
-					col.append(J)
-					val.append(K_e[i][j])
-
-	row = np.array(row)
-	col = np.array(col)
-	data = np.array(val)
-	#data = (val,(row,col))
-
-	K = sp.coo_matrix((data, (row,col)), shape=(int(max(row)+1),int(max(row)+1)), dtype=np.float64 )
-	#K = sp.csr_matrix((data, (row,col)), shape=(int(max(row))+1,int(max(row))+1), dtype=np.float64 )
+					triplets.append( I,J,K_e[i][j] )
 
 
-	return K
+	return triplets
 
-
-
-# def Sum(K,M):
-# 	A = M
-	
-
-# 	for i_k in range(len(K[0])):
-# 		for i in range(len(A[0])):
-# 			if( K[1][0][i_k] == A[1][0][i] and K[1][1][i_k] == A[1][1][i]):
-# 				A[0][i] += K[0][i_k]
-# 			else:
-# 				A[0].append(k[0][i_k])
-# 				A[1][0].append(k[1][0][i_k])
-# 				A[1][1].append(k[1][1][i_k])
-# 	return A
 
 
 
@@ -202,7 +176,7 @@ def calcul_X(m, triangle, xi, eta):
 	x = 0
 	y = 0
 	for i in range(3):
-		phi_ = phi(xi, eta, i+1)
+		phi_ = phi(xi, eta, i)
 		x += triangle.Point[i].x * phi_  #triangle.Point[i].x = S(i) en x
 		y += triangle.Point[i].y * phi_  #triangle.Point[i].y = S(i) en y
 
@@ -221,11 +195,19 @@ def calcul_B(mesh, order, physical_tag, size):
 
 	for triangle in mesh.triangles :
 		if(triangle.tag == physical_tag):
+			x1 = triangle.Point[0].x
+			y1 = triangle.Point[0].y
+			x2 = triangle.Point[1].x
+			y2 = triangle.Point[1].y
+			x3 = triangle.Point[2].x
+			y3 = triangle.Point[2].y
+			detJ = 2 * area(x1, y1, x2, y2, x3, y3)
 
 			gauss = triangle.gaussPoint(order)
+
 			for i in range(3):
 				I = triangle.Point[i].id
-				I = int(I) - 1
+				I = int(I) 
 				for m in range(size_m):
 					xi    = gauss[m][0]
 					eta   = gauss[m][1]
@@ -233,8 +215,9 @@ def calcul_B(mesh, order, physical_tag, size):
 					#print(poids)
 					(x,y) = calcul_X(m, triangle, xi, eta)
 					#print(f(x,y))
-					B[I] += poids * f(x,y) * phi(xi,eta,i+1)
+					B[I] += poids * f(x,y) * phi(xi,eta,i)
 					#print(B[I])
+			B[I] = detJ * B[I]
 
 	return B
 
@@ -250,11 +233,7 @@ def calcul_B(mesh, order, physical_tag, size):
 #dim = 1 : segments bords
 def Dirichlet(mesh, dim, physical_tag, g, triplets, B) :
 
-	row,col,val = sp.find(triplets)
-	row=row.tolist()
-	col=col.tolist()
-	val=val.tolist()
-	# size = len(row) # matrice carre
+
 	if(dim == 1) :	
 		for segment in mesh.segments: #chaque segment
 			if(segment.tag == physical_tag):
@@ -262,36 +241,21 @@ def Dirichlet(mesh, dim, physical_tag, g, triplets, B) :
 					I = point.id
 
 					#------ chercher les lignes d'indices I et les mettre a 0 -----
-					for i in range(len(row)):
-						if (row[i] == I):
-							val[i] = 0.
+					for i in range(len(triplets.data[0])):
+						if (triplets.data[1][0][i] == I):
+							# val[i] = 0.
+							triplets.data[0][i] = 0
+
 
 					#------ ajout de 1 sur l'elem de diago I,I -> (I,I,1) -----
-					# val.append(1)
-					# row.append(I)
-					# col.append(I)
-
-					val.append(1.)
-					row.append(I)
-					col.append(I)
-
+					triplets.append( I,I,1 )
 
 
 					#------ modif de B pour retouver u = B = g sur les noeuds du bords -----
 					B[I] = g
 
-	
 
-	row = np.array(row)
-	col = np.array(col)
-	val = np.array(val)
-
-
-	data = (val,(row,col))
-
-	A = sp.coo_matrix(data, shape=(int(max(row)+1),int(max(row)+1)), dtype=np.float64 )
-
-	return (A, B)
+	return triplets, B
 
 
 
@@ -299,7 +263,7 @@ def Dirichlet(mesh, dim, physical_tag, g, triplets, B) :
 def solve(A,B):
 	
 
-	u = np.linalg.solve(A,B)
+	u = linalg.spsolve(A,B)
 	return u
 
 
@@ -309,7 +273,141 @@ def g_sol(x,y) :
 
 
 
+
+
+
+def test():
+
+	order      = 2
+	dim_dirich = 1
+	g          = 0
+
+	# ------ construction du probleme  ------
+
+
+	# le choix du physical tag depend du .msh -> ici square.msh
+	for (dim, physical_tag) in mesh.physical_tag:
+		if(dim == 2):
+			physical_tag_Triangle = physical_tag
+		if(dim == 1):
+			physical_tag_segment = physical_tag
+
+	#print(physical_tag_Triangle)
+	#print(physical_tag_segment)
+
+	# -- calcul de A --
+
+
+	triplets = Triplet()
+	triplets = matrice_rigidite_globale(mesh, physical_tag_Triangle, triplets)
+	triplets = matrice_masse_globale(mesh, physical_tag_Triangle, triplets)
+	A = sp.coo_matrix(triplets.data ).tocsr()
+	size, sizecol = np.shape(A)
+	print(A)
+
+
+
+	# -- calcul de B --
+	B = calcul_B(mesh, order, physical_tag_Triangle, size)
+
+
+	# -- Pose les conditions aux bords --
+	triplets, B =Dirichlet(mesh, dim_dirich, physical_tag_segment, g, triplets, B)
+	# print(triplets)
+	# -- reshape A et B --
+
+
+	A = sp.coo_matrix(triplets.data ).tocsr()
+	print(A)
+
+
+	# B = np.array(B)
+
+
+	# -- resolution --
+	U = solve(A,B)
+
+
+	# Visualisation
+	x= [pt.x for pt in mesh.points]
+
+	y= [pt.y for pt in mesh.points]
+
+	#triangulation avec les coo des points
+	triang = mtri.Triangulation(x, y)
+
+	#id des triangles
+	connectivity=[]
+	for tri in mesh.triangles:
+	  connectivity.append([ p.id for p in tri.Point]) 
+
+	print(len(x))
+	print(len(connectivity))
+
+	# print(U)
+	####U APPROX NOTRE SOLUTION
+	plt.tricontourf(x,y,connectivity, U, 12)
+	plt.colorbar()
+	plt.show()
+
+
+	############
+
+	### U de REFERENCE
+	Uref = np.zeros((len(mesh.points),))
+
+	for pt in mesh.points:
+	  I = int(pt.id) 
+	  Uref[I] = g_sol(pt.x, pt.y)
+
+
+	# # print(Uref)
+
+	# plt.tricontourf(x,y,connectivity, Uref, 12)
+	# plt.colorbar()
+	# plt.show()
+
+
+	return A,U,B
+
+def affiche_matrice():
+	order      = 2
+	dim_dirich = 1
+	g          = 0
+
+	# ------ construction du probleme  ------
+
+
+	# le choix du physical tag depend du .msh -> ici square.msh
+	for (dim, physical_tag) in mesh.physical_tag:
+		if(dim == 2):
+			physical_tag_Triangle = physical_tag
+		if(dim == 1):
+			physical_tag_segment = physical_tag
+
+	#print(physical_tag_Triangle)
+	#print(physical_tag_segment)
+
+	# -- calcul de A --
+
+
+	K_triplets = Triplet()
+	M_triplets = Triplet()
+	K_triplets = matrice_rigidite_globale(mesh, physical_tag_Triangle, K_triplets)
+	M_triplets = matrice_masse_globale(mesh, physical_tag_Triangle, M_triplets)
+	K = sp.coo_matrix(K_triplets.data ).tocsr()
+	M = sp.coo_matrix(M_triplets.data ).tocsr()
+
+
+
+	print(K.toarray())
+	print(M.toarray())
+
+	return K,M
+
+
 #######SCRIPT######
+
 
 # ------ initialisation du maillage -----
 gmsh.initialize(sys.argv)
@@ -318,102 +416,11 @@ mesh = Mesh()
 mesh.gmshToMesh(filename)
 
 
-order      = 2
-dim_dirich = 1
-g          = 0
-
-# ------ construction du probleme  ------
+K,M = affiche_matrice()
 
 
-# le choix du physical tag depend du .msh -> ici square.msh
-for (dim, physical_tag) in mesh.physical_tag:
-	if(dim == 2):
-		physical_tag_Triangle = physical_tag
-	if(dim == 1):
-		physical_tag_segment = physical_tag
-
-#print(physical_tag_Triangle)
-#print(physical_tag_segment)
-
-# -- calcul de A --
-K = matrice_rigidite_globale(mesh, physical_tag_Triangle)
-M = matrice_masse_globale(mesh, physical_tag_Triangle)
-
-A = K+M
+A,U,B = test()
 
 
-A_tmp = A.toarray()
-#print(np.linalg.det(A_tmp))
 
-size, sizecol = np.shape(A_tmp)
-
-# print(np.linalg.det(A))
-
-
-# -- calcul de B --
-B = calcul_B(mesh, order, physical_tag_Triangle, size)
-
-
-# -- Pose les conditions aux bords --
-(A, B) =Dirichlet(mesh, dim_dirich, physical_tag_segment, g, A, B)
-
-# -- reshape A et B --
-A = A.toarray()
-# A = np.delete(A,0,0)
-# A = np.delete(A,0,1)
-
-B = np.array(B)
-# B = np.delete(B,0,0)
-
-#print( " A et B ")
-# print(A)
-# print(B)
-
-# A_inv = np.linalg.det(A)
-# print("inverse de A:")
-# print(A_inv)
-
-# -- resolution --
-U = solve(A,B)
-#print("solution U :")
-#print(U)
-
-# Visualisation
-x= [pt.x for pt in mesh.points]
-
-y= [pt.y for pt in mesh.points]
-
-#triangulation avec les coo des points
-triang = mtri.Triangulation(x, y)
-
-#id des triangles
-connectivity=[]
-for tri in mesh.triangles:
-  connectivity.append([ p.id for p in tri.Point]) 
-
-
-U = U.flatten()
-
-# print(U)
-####U APPROX NOTRE SOLUTION
-plt.tricontourf(triang, U, 12)
-plt.colorbar()
-plt.show()
-
-
-############
-
-### U de REFERENCE
-Uref = np.zeros((len(mesh.points),))
-
-for pt in mesh.points:
-  I = int(pt.id) - 1
-  Uref[I] = g_sol(pt.x, pt.y)
-
-
-# print(Uref)
-
-plt.tricontourf(triang, Uref, 12)
-plt.colorbar()
-# plt.show()
 
