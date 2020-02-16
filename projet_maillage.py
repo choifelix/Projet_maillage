@@ -5,7 +5,7 @@ from math import *
 import gmsh
 import scipy.sparse as sp
 import scipy.sparse.linalg as linalg
-from test import *
+from maillage import *
 import matplotlib.pyplot as plt
 import matplotlib.tri as mtri
 
