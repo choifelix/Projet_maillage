@@ -11,7 +11,7 @@ import matplotlib.tri as mtri
 
 
 ###MASSE DE REF###
-masse_ref = 1/24 * (np.ones((3,3)) + np.eye(3))
+masse_ref = 1/24 * ( np.ones((3,3)) + np.eye(3) )
 
 
 
@@ -91,7 +91,7 @@ def Bp(x1, y1, x2, y2, x3, y3):
 
 def matrice_masse_elem(x1, y1, x2, y2, x3, y3) : 
 	#pour i, j = 1,2,3
-	det = 2 * 0.5* abs((x2-x1)*(y3-y1) - (x3-x1)*(y2-y1))
+	det =  2 * area(x1, y1, x2, y2, x3, y3)
 	M =  det * masse_ref
 	return M
 
@@ -126,8 +126,7 @@ def matrice_rigidite_elem(x1, y1, x2, y2, x3, y3):
 	K = np.zeros((3,3), dtype=np.float64)
 	Tp = area(x1, y1, x2, y2, x3, y3)
 	B_p = Bp(x1, y1, x2, y2, x3, y3)
-	produit_B = np.dot(B_p.transpose(),B_p)
-	print(produit_B)
+	produit_B = np.dot(B_p,B_p.transpose())
 
 	for i in range(3):
 		for j in range(3):
@@ -213,13 +212,30 @@ def calcul_B(mesh, order, physical_tag, size):
 					eta   = gauss[m][1]
 					poids = gauss[m][2]
 					#print(poids)
-					(x,y) = calcul_X(m, triangle, xi, eta)
+					x,y = calcul_X(m, triangle, xi, eta)
 					#print(f(x,y))
 					B[I] += poids * f(x,y) * phi(xi,eta,i)
 					#print(B[I])
 			B[I] = detJ * B[I]
 
 	return B
+
+
+# calcul du second membre issue de secours
+def second_membre(mesh,M):
+	f_chap = np.zeros( (M.shape[0],1) )
+
+	for point in mesh.points:
+		x = point.x
+		y = point.y
+
+		f_chap[int(point.id)] = f(x,y)
+
+	return np.dot(M,f_chap)
+
+
+
+
 
 
 
@@ -299,8 +315,12 @@ def test():
 
 
 	triplets = Triplet()
-	triplets = matrice_rigidite_globale(mesh, physical_tag_Triangle, triplets)
 	triplets = matrice_masse_globale(mesh, physical_tag_Triangle, triplets)
+	
+	M = sp.coo_matrix(triplets.data ).tocsr()
+	M = M.todense()
+	print(M)
+	triplets = matrice_rigidite_globale(mesh, physical_tag_Triangle, triplets)
 	A = sp.coo_matrix(triplets.data ).tocsr()
 	size, sizecol = np.shape(A)
 	print(A)
@@ -308,11 +328,16 @@ def test():
 
 
 	# -- calcul de B --
-	B = calcul_B(mesh, order, physical_tag_Triangle, size)
-
+	# B = calcul_B(mesh, order, physical_tag_Triangle, size)
+	B = second_membre(mesh,M)
+	print("############ B #############")
+	print(B)
 
 	# -- Pose les conditions aux bords --
 	triplets, B =Dirichlet(mesh, dim_dirich, physical_tag_segment, g, triplets, B)
+
+	print("############ B post bords #############")
+	print(B)
 	# print(triplets)
 	# -- reshape A et B --
 
